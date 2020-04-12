@@ -12,11 +12,22 @@ class CartClassifierJ(BaseEstimator):
         self.tree_id=0
         self.trees_togrow=[]
         self.cat_cols=[]
+        self.min_samples_split=None
+        self.min_samples_leaf=None
+        self.n_samples=None
         pass
     
     def ctree(self,list_data_target):
         p_data=list_data_target[1]
         p_target=list_data_target[2]
+        if (p_data.shape[0]<self.min_samples_split if min_samples_split>1 else p_data.shape[0]<self.min_samples_split*self.n_samples) or \
+            (p_data.shape[0]<self.min_samples_leaf*2 if min_samples_leaf>1 else p_data.shape[0]<self.min_samples_leaf*self.n_samples) or \
+            (len(p_target.unique())<2):
+            # 节点样本数小于2（min_samples_split）/ 节点样本数 < 样本总数*最小比例
+            # 样本数小于2*叶节点最小样本数（min_samples_leaf）/ 节点样本数 < 2*样本总数*最小比例
+            # 类别只有1类
+
+            pass
         cat_data=None
         num_data=None
         list_best_split=[]
@@ -62,7 +73,10 @@ class CartClassifierJ(BaseEstimator):
         self.tree_id+=2
 
         pass
-    def fit(self,data,target,class_weight=None,cat_cols=[]):
+    def fit(self,data,target,class_weight=None,cat_cols=[],min_samples_split=2,min_samples_leaf=1):
+        self.min_samples_split=min_samples_split
+        self.min_samples_leaf=min_samples_leaf
+        self.n_samples=target.shape[0]
         self.cat_cols=cat_cols
         self.trees_togrow.append([self.tree_id,data,target])
         while True:
