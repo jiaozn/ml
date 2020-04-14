@@ -123,7 +123,8 @@ class CartClassifierJ(BaseEstimator):
         # sample_weight:array
         self.n_samples=target.shape[0]
         if not sample_weight:# array
-            sample_weight=np.array(([1/self.n_samples]*self.n_samples))
+            # sample_weight=np.array(([1/self.n_samples]*self.n_samples))
+            sample_weight=np.array(([1]*self.n_samples))
         if not self.class_weight:
             for i in np.unique(target):
                 self.class_weight[i]=1-np.sum(target==i)/self.n_samples 
@@ -195,7 +196,8 @@ if __name__ == "__main__":
         s_val_x=data[val_index,:]
         s_val_y=target[val_index]
         
-    j_clf=CartClassifierJ(class_weight=None,cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7)
+    # j_clf=CartClassifierJ(class_weight=None,cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7)
+    j_clf=CartClassifierJ(class_weight={0:1,1:1,2:1},cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7)
     j_clf.fit(s_train_x,s_train_y)
     j_clf_y=j_clf.predict(s_val_x)
     print('j_clf Score:')
