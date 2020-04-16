@@ -1,7 +1,7 @@
 # ml
 
 
-### naiveBayesJ.py
+## naiveBayesJ.py
 
 朴素贝叶斯分类器。
 
@@ -15,21 +15,27 @@ sklearn的分类器貌似不能同时支持 连续特征、离散类别两种特
 - 3、空值处理。可以不填充，而作为单独的一类，在连续、离散两种特征中，应该都有更好的处理方法。（如上）
 
 
-### CartClassifierJ.py
+## CartClassifierJ.py
 
 Cart决策树分类器。
 
-sklearn源码为cython。这是python实现，与网上已有的相比，参数多了许多。
+sklearn源码为cython。这是python实现，与网上已有的相比，功能多了些。
 
 可以完善的点有：
 
-- 1、剪枝没有做。
-- 2、离散特征没有做。
-- 3、空值没有处理。
-- 4、连续特征中的特殊值，没有处理。
-- 5、连续特征，没有使用分割点组合。
+- 1、离散特征没有做。
+- 2、空值没有处理。
+- 3、连续特征中的特殊值，没有处理。
+- 4、连续特征，没有使用分割点组合。
 
 学习总结:
 - 1、实现了class_weight参数
 - 2、实现了sample_weight参数
 - 3、实现了min_samples_split,min_samples_leaf,min_weight_fraction_leaf控制生成的参数逻辑。
+- 4、实现了cart剪枝方法(2020.4.16日更新)
+
+## CartRegressorJ.py
+
+Cart决策树回归器。
+
+在无剪枝的分类器版本上、稍加改动实现的（这一版无剪枝）。
