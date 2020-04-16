@@ -5,9 +5,12 @@ import numpy as np
 import pandas as pd
 import math
 from sklearn.base import BaseEstimator
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.metrics import f1_score,accuracy_score,recall_score,precision_score
+import copy
 class CartClassifierJ(BaseEstimator):
     # cart分类树
-    def __init__(self,class_weight=None,cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7):
+    def __init__(self,class_weight=None,cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7,pruning_rate=None,random_state=42,pruning_score='f1',average='micro'):
         self.trees={}
         self.tree_id=0
         self.trees_togrow=[]
@@ -22,6 +25,11 @@ class CartClassifierJ(BaseEstimator):
         self.min_weight_fraction_leaf=min_weight_fraction_leaf
         self.min_impurity_split=min_impurity_split
         self.sample_weight=None
+        self.pruning_rate=pruning_rate
+        self.random_state=random_state
+        self.leaf_node=[]
+        self.pruning_score='f1'# f1,accuracy,recall,precision
+        self.average=average
         pass
     
     def ctree(self,list_data_target):
@@ -35,6 +43,15 @@ class CartClassifierJ(BaseEstimator):
         p_data=list_data_target[1]
         p_target=list_data_target[2]
         p_sample_weight= list_data_target[3]
+
+        p_weight_sum=p_sample_weight.sum()
+        node_c=1-np.sum([(p_sample_weight[p_target==y].sum()/p_weight_sum)**2 for y in np.unique(p_target)])
+
+        p=[np.sum(p_sample_weight[p_target==i]) for i in np.unique(p_target)]
+        tree_id_left=self.tree_id+1
+        tree_id_right=self.tree_id+2
+        self.tree_id+=2
+
         if (p_data.shape[0]<self.min_samples_split if self.min_samples_split>1 else p_data.shape[0]<self.min_samples_split*self.n_samples) or \
             (p_data.shape[0]<self.min_samples_leaf*2 if self.min_samples_leaf>=1 else p_data.shape[0]<self.min_samples_leaf*self.n_samples) or \
             (len(np.unique(p_target))<2) or \
@@ -45,11 +62,13 @@ class CartClassifierJ(BaseEstimator):
             # 节点权重<=2*min_weight_fraction_leaf
 
             # 每种类别
-            p=[np.sum(p_sample_weight[p_target==i]) for i in np.unique(p_target)]
+            # p=[np.sum(p_sample_weight[p_target==i]) for i in np.unique(p_target)]
             # self.trees_growed.append[list_data_target.append(np.unique(p_target)[np.argmax(p)]).append(p)]
             # id:[gini_da,s_feat,s_num,left_id,right_id,y,p]
-            self.trees[list_data_target[0]]=[-1,-1,-1,-1,-1]+[np.unique(p_target)[np.argmax(p)],p]
-            self.trees_togrow.remove(list_data_target)
+            self.trees[list_data_target[0]]=[-1,-1,-1,-1,-1]+[np.unique(p_target)[np.argmax(p)],p]+[p_weight_sum,node_c,-1]
+            self.trees_togrow.pop(0)
+            self.leaf_node.append(list_data_target[0])
+            self.tree_id=self.tree_id-2
             pass
         else:
             cat_data=None
@@ -101,25 +120,126 @@ class CartClassifierJ(BaseEstimator):
             ndarray_ginida_nf_sp=np.array(list_ginida_nf_sp)
             best_split=ndarray_ginida_nf_sp[np.argmin(ndarray_ginida_nf_sp[:,0]),:]
             list_best_split.append(best_split.tolist())
-            print('TreeID='+str(list_data_target[0])+'，最佳分裂：gini_da='+str(best_split[0])+'，数字特征='+str(int(best_split[1]))+'，分裂点≤'+str(best_split[2])+'，左树ID='+str(self.tree_id+1)+'，右树ID='+str(self.tree_id+2))# 正常分裂点应该取两个值的中间值，这里直接取了样本特征值
-            self.trees[list_data_target[0]]=best_split.tolist()+[self.tree_id+1,self.tree_id+2]
+            print('TreeID='+str(list_data_target[0])+'，最佳分裂：gini_da='+str(best_split[0])+'，数字特征='+str(int(best_split[1]))+'，分裂点≤'+str(best_split[2])+'，左树ID='+str(tree_id_left)+'，右树ID='+str(tree_id_right))# 正常分裂点应该取两个值的中间值，这里直接取了样本特征值
+            
+            # p=[np.sum(p_sample_weight[p_target==i]) for i in np.unique(p_target)]
             lines_left=p_data[:,int(best_split[1])]<=best_split[2]
             left_data=p_data[lines_left,:]
             right_data=p_data[~(lines_left),:]
             left_sample_weight=p_sample_weight[lines_left]
             right_sample_weight=p_sample_weight[~(lines_left)]
             if left_data.shape[0]==0 or right_data.shape[0]==0:
-                p=[np.sum(p_sample_weight[p_target==i]) for i in np.unique(p_target)]
-                self.trees[list_data_target[0]]=[-1,-1,-1,-1,-1]+[np.unique(p_target)[np.argmax(p)],p]
+                self.trees[list_data_target[0]]=[-1,-1,-1,-1,-1]+[np.unique(p_target)[np.argmax(p)],p]+[p_weight_sum,node_c,-1]
+                self.leaf_node.append(list_data_target[0])
+                self.tree_id=self.tree_id-2
+                self.trees_togrow.pop(0)
             else:
-                self.trees_togrow.append([self.tree_id+1,left_data,p_target[lines_left],left_sample_weight])
-                self.trees_togrow.append([self.tree_id+2,right_data,p_target[~(lines_left)],right_sample_weight])
-                self.tree_id+=2
-            self.trees_togrow.remove(list_data_target)
+                self.trees[list_data_target[0]]=best_split.tolist()+[tree_id_left,tree_id_right]+[np.unique(p_target)[np.argmax(p)],p]+[p_weight_sum,node_c,1]
+                self.trees_togrow.append([tree_id_left,left_data,p_target[lines_left],left_sample_weight])
+                self.trees_togrow.append([tree_id_right,right_data,p_target[~(lines_left)],right_sample_weight])
+                self.trees_togrow.pop(0)
             # self.trees={}
             # id:[gini_da,s_feat,s_num,left_id,right_id,y,p]
-            pass
-    def fit(self,data,target,sample_weight=None):
+        pass
+    def cart_pruning(self,data,target,sample_weight,pruning_x,pruning_y,pruning_sample_weight):
+        tree_list=[]
+        tree_list.append(copy.deepcopy(self.trees))
+
+        tree_tmp=copy.deepcopy(self.trees)
+        leaf_tmp=copy.deepcopy(self.leaf_node)
+
+        while len(tree_tmp)>3:
+            # c_now=0
+            # for k in leaf_tmp:
+            #     c_now=c_now+tree_tmp[k][8]*tree_tmp[k][7]/(sample_weight.sum())
+            a=[]
+            i_his=[]
+            tree_node_list=list(tree_tmp.keys())
+            for ji in list(range(len(tree_node_list))):
+                i=np.max(tree_node_list)
+                if i ==0 or i in leaf_tmp:# 是叶子
+                    tree_node_list.remove(i)
+                    continue
+                else:
+                    little_node_list=[]
+                    # little_leaf_list=copy.deepcopy(leaf_tmp)
+                    little_leaf_list=[]
+                    little_node_list.append(i)
+                    while len(little_node_list)>0:
+                    # for tt in little_node_list:
+                        tt = little_node_list[0]
+                        if tree_tmp[tt][9]==-1:
+                            little_leaf_list.append(tt)
+                        else:
+                            little_node_list.append(tree_tmp[tt][3])
+                            little_node_list.append(tree_tmp[tt][4])
+                        little_node_list.remove(tt)
+                    # little_leaf_list.append(i)
+                    c_full=0
+                    for j in little_leaf_list:
+                        c_full+=tree_tmp[j][8]*tree_tmp[j][7]/tree_tmp[i][7]
+                    a.append((tree_tmp[i][8]-c_full)/(len(little_leaf_list)-1))
+                    i_his.append(i)
+            
+            nr=i_his[np.argmin(np.array(a))]
+            little_node_list=[]
+            # little_leaf_list=leaf_tmp.copy()
+            little_node_list.append(int(nr))
+            while len(little_node_list)>0:
+                for tt in little_node_list:
+                    # if tree_tmp[tt][9]==-1:
+                    #     # leaf_tmp.remove(tt)
+                    #     pass
+                    # else:
+                    if tree_tmp[tt][3]!=-1:
+                        little_node_list.append(tree_tmp[tt][3])
+                    if tree_tmp[tt][4]!=-1:
+                        little_node_list.append(tree_tmp[tt][4])
+                    if tt!=nr:
+                        tree_tmp.pop(tt)
+                    little_node_list.remove(tt)
+            leaf_tmp.append(int(nr))
+            tree_tmp[nr][0]=-1
+            tree_tmp[nr][1]=-1
+            tree_tmp[nr][2]=-1
+            tree_tmp[nr][3]=-1
+            tree_tmp[nr][4]=-1
+            tree_tmp[nr][9]=-1
+            tree_list.append(copy.deepcopy(tree_tmp))
+        score_list=[]
+        for i in range(len(tree_list)):
+            # f1_score,accuracy_score,recall_score,precision_score
+            if self.pruning_score=='f1':
+                score_list.append(f1_score(pruning_y,self.predict_with(pruning_x,tree_list[i]),average=self.average))
+            if self.pruning_score=='accuracy':
+                score_list.append(accuracy_score(pruning_y,self.predict_with(pruning_x,tree_list[i]),average=self.average))
+            if self.pruning_score=='recall':
+                score_list.append(recall_score(pruning_y,self.predict_with(pruning_x,tree_list[i]),average=self.average))
+            if self.pruning_score=='precision':
+                score_list.append(precision_score(pruning_y,self.predict_with(pruning_x,tree_list[i]),average=self.average))
+        self.trees=tree_list[np.argmax(np.array(score_list))]
+        print('prune ok')
+        pass
+    def fit(self,all_data,all_target,all_sample_weight=None):
+        if self.pruning_rate and self.pruning_rate>0:
+            split=StratifiedShuffleSplit(n_splits=1,test_size=self.pruning_rate,random_state=self.random_state)
+            for train_index,val_index in split.split(all_data,all_target):
+                data=all_data[train_index,:]
+                target=all_target[train_index]
+                pruning_x=all_data[val_index,:]
+                pruning_y=all_target[val_index]
+                if all_sample_weight:
+                    sample_weight=all_sample_weight[train_index]
+                    pruning_sample_weight=all_sample_weight[val_index]
+                else:
+                    sample_weight=None
+                    pruning_sample_weight=None
+            # del all_data
+            # del all_target
+        else:
+            data=all_data
+            target=all_target
+            sample_weight=all_sample_weight
         # sample_weight:array
         self.n_samples=target.shape[0]
         if not sample_weight:# array
@@ -132,13 +252,16 @@ class CartClassifierJ(BaseEstimator):
             sample_weight[i]=sample_weight[i]*self.class_weight[target[i]]
         self.sample_weight=sample_weight
 
-        self.trees_togrow.append([self.tree_id,data,target,self.sample_weight])
+        self.trees_togrow.append([0,data,target,self.sample_weight])
         while True:
             if len(self.trees_togrow)>0:
                 self.ctree(self.trees_togrow[0])
             else:
                 break
         # for t in self.trees_togrow:
+        print('grow ok')
+        if self.pruning_rate:
+            self.cart_pruning(data,target,sample_weight,pruning_x,pruning_y,pruning_sample_weight)
         print('fit done')
         pass
 
@@ -149,7 +272,7 @@ class CartClassifierJ(BaseEstimator):
             t_id=0
             while True:
                 t=self.trees[t_id]
-                if len(t)==7:#叶子结点
+                if t[9]==-1:#叶子结点
                     list_result.append(t[5])
                     list_prob.append(t[6])
                     break
@@ -161,6 +284,24 @@ class CartClassifierJ(BaseEstimator):
         # return np.array(list_result),list_prob
         return np.array(list_result)
         pass
+    def predict_with(self,data,tree):
+        list_result=[]
+        list_prob=[]
+        for i in data:
+            t_id=0
+            while True:
+                t=tree[t_id]
+                if t[9]==-1:#叶子结点
+                    list_result.append(t[5])
+                    list_prob.append(t[6])
+                    break
+                else:
+                    if i[int(t[1])]<=t[2]:
+                        t_id=t[3]
+                    else:
+                        t_id=t[4]
+        # return np.array(list_result),list_prob
+        return np.array(list_result)
 
 
 from sklearn.metrics import f1_score,accuracy_score,recall_score,precision_score,confusion_matrix
@@ -197,14 +338,15 @@ if __name__ == "__main__":
         s_val_y=target[val_index]
         
     # j_clf=CartClassifierJ(class_weight=None,cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7)
-    j_clf=CartClassifierJ(class_weight={0:1,1:1,2:1},cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7)
+    # j_clf=CartClassifierJ(class_weight={0:1,1:1,2:1},cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7)
+    j_clf=CartClassifierJ(class_weight={0:1,1:1,2:1},cat_cols=[],min_samples_split=2,min_samples_leaf=1,min_weight_fraction_leaf=0,min_impurity_split=1e-7,pruning_rate=0.9,random_state=42,pruning_score='f1')
     j_clf.fit(s_train_x,s_train_y)
     j_clf_y=j_clf.predict(s_val_x)
     print('j_clf Score:')
     print(jscore(j_clf,s_train_x,s_train_y,s_val_x,s_val_y))
 
     from sklearn.tree import DecisionTreeClassifier
-    sk_clf=DecisionTreeClassifier()
+    sk_clf=DecisionTreeClassifier(criterion='gini', splitter='best', max_depth=None, min_samples_split=2, min_samples_leaf=1, min_weight_fraction_leaf=0.0, max_features=None, random_state=42, max_leaf_nodes=None, min_impurity_decrease=0.0, min_impurity_split=None, class_weight=None, presort='deprecated', ccp_alpha=0.0)
     sk_clf.fit(s_train_x,s_train_y)
     sk_clf_y=sk_clf.predict(s_val_x)
     print('sk_clf Score:')
